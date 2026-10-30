@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Banky app – Hospital Stock</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap">
+<style>
+:root{color-scheme:light dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f3f6f6;--card:#fff;--ink:#12262b;--mute:#62787d;--line:#dbe5e6;--acc:#0f8b8d;--bad:#c4452f;--ok:#1f8f5a;--warn:#b7791f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b161b;--card:#122229;--ink:#e8f1f2;--mute:#8fa6ab;--line:#22383f;--acc:#4fd1c5;--bad:#ef7b6b;--ok:#6fcf97;--warn:#f6c453}}
+:root[data-theme="dark"]{--bg:#0b161b;--card:#122229;--ink:#e8f1f2;--mute:#8fa6ab;--line:#22383f;--acc:#4fd1c5;--bad:#ef7b6b;--ok:#6fcf97;--warn:#f6c453}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Sora',system-ui,-apple-system,Segoe UI,sans-serif;font-size:13px}
+main{max-width:1000px;margin:0 auto;padding:14px}
+h1{font-size:19px;margin:0}h2{font-size:14px;margin:0 0 10px}
+.sub{color:var(--mute);font-size:12px;margin-top:2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px;margin-top:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.sp{justify-content:space-between}
+input,select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button{cursor:pointer}
+button.p{background:var(--acc);color:#04201f;border-color:transparent;font-weight:600}
+nav{display:flex;gap:6px;overflow-x:auto;padding:12px 0 2px;scrollbar-width:none}
+nav button{white-space:nowrap;flex:none}
+nav button.on{background:var(--acc);color:#04201f;border-color:transparent;font-weight:600}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:8px}
+.k{background:var(--bg);border-radius:10px;padding:10px}
+.k span{display:block;font-size:11px;color:var(--mute)}.k b{font-size:16px}
+.w{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:520px}
+th,td{padding:6px 7px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}
+th{font-size:11px;color:var(--mute);font-weight:600;border-top:0}
+th:first-child,td:first-child{text-align:left}
+td input{width:100%;min-width:80px;padding:5px}
+.bad{color:var(--bad)}.ok{color:var(--ok)}.wn{color:var(--warn)}
+.add{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;align-items:end}
+.add label{font-size:11px;color:var(--mute);display:block}.add input,.add select{width:100%}
+#msg{font-size:12px;margin-top:8px;min-height:1em}
+.nt{color:var(--mute);font-size:12px;margin-top:8px}
+svg{width:100%;height:auto;display:block}
+body.ro #cnt,body.ro .add,body.ro [data-del],body.ro [data-iss],body.ro td input{pointer-events:none;opacity:.5}
+</style>
+</head>
+<body>
+<main>
+<div class="row sp">
+<div class="row" style="flex-wrap:nowrap"><img id="hlg" alt="" style="display:none;height:36px;max-width:90px;object-fit:contain;border-radius:6px"><div><h1 id="hbn">Banky app</h1><div class="sub">Hospital stock manager · FEFO · profit · monthly closing</div></div></div>
+</div>
+<nav id="nav"></nav>
+<div id="view"></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
+const num=n=>(+n||0).toLocaleString(undefined,{maximumFractionDigits:2});
+const fmt=n=>D.cur+num(n);
+const td=()=>new Date().toISOString().slice(0,10);
+const addD=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x.toISOString().slice(0,10)};
+const days=d=>Math.round((new Date(d)-new Date(td()))/864e5);
+const item=id=>D.items.find(i=>i.id===id)||{name:'(deleted item)',unit:'',cost:0,price:0,min:0};
+const lab=i=>(i.code?i.code+' · ':'')+i.name,pick=s=>(D.items.find(i=>lab(i)===s.trim())||D.items.find(i=>i.name.toLowerCase()===s.trim().toLowerCase())||{}).id||'';
+const rec=id=>D.rec.find(r=>r.id===id)||{cost:0,batch:'?'};
+const mn=()=>D.money!==false,MH=['Cost','Price','Value','Value (cost)','Retail value','Closing value','Sales','Profit'];
+const byExp=(a,b)=>(a.exp||'9')<(b.exp||'9')?-1:(a.exp||'9')>(b.exp||'9')?1:0;
+const short=n=>Math.abs(n)>=1e6?(n/1e6).toFixed(1)+'M':Math.abs(n)>=1e3?(n/1e3).toFixed(0)+'k':Math.round(n);
+const badge=(t,c)=>'<span class="'+c+'">'+t+'</span>';
+const stl=(q,m)=>q<=0?badge('Out of stock','bad'):m&&q<=m?badge('Low','wn'):badge('OK','ok');
+const expc=e=>{if(!e)return'\u2013';const d=days(e);return e+(d<0?' '+badge('expired','bad'):d<=90?' '+badge('in '+d+'d','wn'):'')};
+let D,tab='dash',MSG='',RQ='',SF='',SC='',SK='',MO=td().slice(0,7);
+function remMap(f){const m={};D.rec.forEach(r=>{if(f(r.date))m[r.id]=r.qty});D.out.forEach(o=>{if(f(o.date))o.al.forEach(a=>{if(m[a.b]!=null)m[a.b]-=a.q})});return m}
+function addOut(type,iid,qty,price,to,date){
+const m=remMap(()=>true),wo=type!=='Sale'&&type!=='Issue';
+const B=D.rec.filter(r=>r.item===iid&&m[r.id]>0&&r.date<=date&&(wo||!r.exp||r.exp>=date)).sort(byExp);
+const av=sum(B,r=>m[r.id]);
+if(qty>av)return{err:'Only '+num(av)+' available'+(wo?'.':' (expired batches are not used).')};
+let need=qty;const al=[];
+for(const r of B){if(need<=0)break;const q=Math.min(need,m[r.id]);al.push({b:r.id,q});need-=q}
+D.out.unshift({id:uid(),date,type,item:iid,qty,price,to,al});
+return{al};
+}
+function seed(){
+const t=td(),I=(name,cat,unit,cost,price,min)=>({id:uid(),name,cat,unit,cost,price,min});
+const it=[I('Paracetamol 500 mg tablets','Medicines','pack of 100',900,1500,10),I('Amoxicillin 500 mg capsules','Medicines','pack of 100',2500,4000,10),I('Normal saline 500 ml','Infusions','bottle',350,600,30),I('Surgical gloves (M)','Consumables','box of 100',2200,3200,8),I('Syringe 5 ml','Consumables','box of 100',1800,2800,6)];
+const R=(i,b,e,q,c,d)=>({id:uid(),date:addD(t,-d),item:it[i].id,batch:b,exp:addD(t,e),qty:q,cost:c,sup:'MediSupply Ltd'});
+D={cur:'\u20a6',brand:{name:'Banky app',logo:''},items:it,rec:[R(0,'PCM-A1',40,30,900,120),R(0,'PCM-B2',300,50,920,20),R(1,'AMX-01',200,40,2500,100),R(2,'NS-77',25,100,350,90),R(2,'NS-78',400,100,360,10),R(3,'GL-10',500,20,2200,60),R(4,'SY-05',-5,10,1800,150)],out:[],req:[]};
+const S=(i,q,d)=>addOut('Sale',it[i].id,q,it[i].price,'Pharmacy counter',addD(t,-d));
+const U=(i,q,u,d)=>addOut('Issue',it[i].id,q,0,u,addD(t,-d));
+S(1,8,70);S(2,35,68);S(0,9,65);S(1,12,40);S(2,40,38);S(0,14,35);U(0,6,'Ward B',22);S(3,5,15);S(0,10,12);U(4,3,'Emergency',11);U(3,4,'Theatre',9);S(2,30,8);U(2,25,'Ward A',6);S(1,9,5);S(0,12,3);
+addOut('Write-off',it[4].id,2,0,'Expired',addD(t,-1));
+D.req=[{id:uid(),date:addD(t,-2),unit:'Ward A',item:it[2].id,qty:20,st:'Pending'},{id:uid(),date:addD(t,-1),unit:'Theatre',item:it[3].id,qty:3,st:'Pending'},{id:uid(),date:addD(t,-9),unit:'Ward B',item:it[0].id,qty:5,st:'Issued'}];
+return D;
+}
+try{D=JSON.parse(localStorage.getItem('hsd1')||'null')}catch(e){}
+if(!D||!D.items)D=seed();
+if(!D.brand)D.brand={name:'Banky app',logo:''};
+if(!D.mv){D.money=true;D.mv=1}
+const save=()=>{try{localStorage.setItem('hsd1',JSON.stringify(D))}catch(e){}push()};
+function tbl(h,rows){if(!mn()){const k=h.map((x,i)=>MH.includes(x)?-1:i).filter(i=>i>=0);h=k.map(i=>h[i]);rows=rows.map(r=>k.map(i=>r[i]))}return'<div class="w"><table><tr>'+h.map(x=>'<th>'+x+'</th>').join('')+'</tr>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</table></div>'}
+function monthData(mo){
+const st=mo+'-01',inM=d=>d.startsWith(mo),open=remMap(d=>d<st),close=remMap(d=>d<=mo+'-31');
+const cst=o=>sum(o.al,a=>a.q*rec(a.b).cost);
+return D.items.map(i=>{
+const rs=D.rec.filter(r=>r.item===i.id),os=D.out.filter(o=>o.item===i.id&&inM(o.date)),rm=rs.filter(r=>inM(r.date));
+const q=m=>sum(rs,r=>m[r.id]||0),v=m=>sum(rs,r=>(m[r.id]||0)*r.cost);
+const S=os.filter(o=>o.type==='Sale'),U=os.filter(o=>o.type==='Issue'),W=os.filter(o=>o.type!=='Sale'&&o.type!=='Issue');
+return{i,oq:q(open),ov:v(open),rq:sum(rm,r=>r.qty),rv:sum(rm,r=>r.qty*r.cost),sq:sum(S,o=>o.qty),rev:sum(S,o=>o.qty*o.price),cogs:sum(S,cst),iq:sum(U,o=>o.qty),iv:sum(U,cst),wq:sum(W,o=>o.qty),wv:sum(W,cst),cq:q(close),cv:v(close),req:sum(D.req.filter(x=>x.item===i.id&&inM(x.date)),x=>x.qty)};
+});
+}
+const K=(l,v,c)=>'<div class="k"><span>'+l+'</span><b class="'+(c||'')+'">'+v+'</b></div>';
+function chart(){
+const ms=[];for(let k=5;k>=0;k--){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-k);ms.push(d.toISOString().slice(0,7))}
+const dt=ms.map(m=>{const r=monthData(m);return mn()?{m,rev:sum(r,x=>x.rev),pf:sum(r,x=>x.rev-x.cogs)}:{m,rev:sum(r,x=>x.sq),pf:sum(r,x=>x.iq)}});
+const mx=Math.max(1,...dt.map(d=>Math.max(d.rev,d.pf)));
+return'<svg viewBox="0 0 600 200" role="img" aria-label="Sales and profit for the last 6 months">'+dt.map((d,i)=>{const x=20+i*95,a=d.rev/mx*120,b=Math.max(0,d.pf)/mx*120;return'<rect x="'+x+'" y="'+(150-a)+'" width="34" height="'+a+'" rx="4" style="fill:var(--acc)"/><rect x="'+(x+38)+'" y="'+(150-b)+'" width="34" height="'+b+'" rx="4" style="fill:var(--warn)"/><text x="'+(x+17)+'" y="'+(144-a)+'" text-anchor="middle" font-size="11" style="fill:var(--mute)">'+short(d.rev)+'</text><text x="'+(x+55)+'" y="'+(144-b)+'" text-anchor="middle" font-size="11" style="fill:var(--mute)">'+short(d.pf)+'</text><text x="'+(x+36)+'" y="172" text-anchor="middle" font-size="12" style="fill:var(--mute)">'+d.m.slice(5)+'/'+d.m.slice(2,4)+'</text>'}).join('')+'</svg>';
+}
+function dash(){
+const m=remMap(()=>true),mo=td().slice(0,7),md=monthData(mo);
+const val=sum(D.rec,r=>(m[r.id]||0)*r.cost);
+const qty=i=>sum(D.rec.filter(r=>r.item===i.id),r=>m[r.id]||0);
+const low=D.items.filter(i=>qty(i)<=i.min);
+const live=D.rec.filter(r=>m[r.id]>0&&r.exp);
+const near=live.filter(r=>days(r.exp)>=0&&days(r.exp)<=90).sort(byExp),exp=live.filter(r=>days(r.exp)<0);
+const rev=sum(md,x=>x.rev),pf=rev-sum(md,x=>x.cogs);
+return'<div class="card"><h2>This month</h2><div class="kp">'+(mn()?K('Sales',fmt(rev))+K('Profit',fmt(pf),pf>=0?'ok':'bad')+K('Issued to units (cost)',fmt(sum(md,x=>x.iv))):K('Items sold (qty)',num(sum(md,x=>x.sq)))+K('Issued to units (qty)',num(sum(md,x=>x.iq))))+K('Requisitioned (qty)',num(sum(md,x=>x.req)))+K('Pending requisitions',D.req.filter(r=>r.st==='Pending').length,'wn')+'</div></div>'+
+'<div class="card"><h2>In the store now</h2><div class="kp">'+(mn()?K('Stock value (cost)',fmt(val))+K('Stock value (retail)',fmt(sum(D.rec,r=>(m[r.id]||0)*item(r.item).price))):'')+K('Items in store',D.items.filter(i=>qty(i)>0).length)+K('Low or out of stock',low.length,low.length?'wn':'ok')+K('Expiring in 90 days',near.length,near.length?'wn':'ok')+(mn()?K('Cost of stock expiring',fmt(sum(near,r=>m[r.id]*r.cost)),'wn'):'')+K('Expired in store',exp.length,exp.length?'bad':'ok')+'</div></div>'+
+'<div class="card"><h2>'+(mn()?'Sales and profit':'Items sold and issued')+', last 6 months</h2>'+chart()+'<div class="nt">'+(mn()?'Teal = sales. Amber = profit (sales minus cost of the batches sold).':'Teal = items sold. Amber = items issued to units.')+'</div></div>'+
+reorder()+'<div class="card"><h2>Needs attention</h2>'+(low.length||near.length||exp.length?tbl(['Alert','Item','Batch','Expiry','Qty'],low.map(i=>[badge('Low stock','wn'),esc(i.name),'','',num(qty(i))]).concat(exp.map(r=>[badge('Expired','bad'),esc(item(r.item).name),esc(r.batch),r.exp,num(m[r.id])]),near.map(r=>[badge('Expiring','wn'),esc(item(r.item).name),esc(r.batch),r.exp,num(m[r.id])]))):'<div class="nt">Nothing needs attention.</div>')+'</div>';
+}
+function stockTable(q){
+const m=remMap(()=>true),rows=[];q=(q||'').toLowerCase();
+D.items.filter(i=>i.name.toLowerCase().includes(q)).forEach(i=>{
+const bs=D.rec.filter(r=>r.item===i.id&&m[r.id]>0).sort(byExp),tq=sum(bs,r=>m[r.id]);
+rows.push(['<b>'+esc(i.name)+'</b><br><small>'+esc(i.unit)+'</small>','<b>'+num(tq)+'</b>',num(i.min),stl(tq,i.min),bs.length?expc(bs[0].exp):'\u2013',fmt(sum(bs,r=>m[r.id]*r.cost))]);
+bs.forEach((r,k)=>rows.push(['<small>&nbsp;&nbsp;FEFO '+(k+1)+' \u00b7 '+esc(r.batch)+'</small>','<small>'+num(m[r.id])+'</small>','','',expc(r.exp),'<small>'+fmt(m[r.id]*r.cost)+'</small>']));
+});
+return rows.length?tbl(['Item / batch','On hand','Reorder level','Status','Expiry','Value (cost)'],rows):'<div class="nt">No items found.</div>';
+}
+const FF={
+items:[['code','Item code','text'],['name','Item name','text'],['cat','Category','text'],['unit','Unit (e.g. box of 100)','text'],['cost','Cost price','num'],['price','Selling price','num'],['min','Reorder level','num'],['sup','Usual supplier','text']],
+rec:[['date','Date received','date'],['item','Item','item'],['batch','Batch no.','text'],['exp','Expiry date','date',1],['qty','Quantity in','num'],['cost','Cost price (blank = item cost)','num'],['sup','Supplier','text']],
+out:[['type','Type','sel',['Sale','Issue','Write-off','Return to supplier']],['date','Date','date'],['item','Item','item'],['qty','Quantity out','num'],['price','Selling price (blank = item price)','num'],['to','Customer or unit','text']],
+req:[['date','Date','date'],['unit','Requesting unit','text'],['item','Item','item'],['qty','Quantity requested','num']]
+};
+const ff=t=>FF[t].filter(f=>mn()||!['cost','price'].includes(f[0]));
+const TT={items:'Items catalogue',rec:'Stock in (receive)',out:'Stock out (sell, issue, write-off)',req:'Requisitions'};
+const HH={items:'Save every item once. It then appears in the lists when you receive or issue stock.',rec:'Record each batch as it arrives with its expiry date. Stock is then issued earliest-expiry-first (FEFO).',out:'Sales and issues take stock from the earliest-expiring batch automatically. Expired batches are never used, except for write-off.',req:'Units request items here. Tap Issue to send the stock out by FEFO.'};
+function form(t){
+const ops=D.items.map(i=>'<option value="'+esc(lab(i))+'">').join('');
+return'<div class="add">'+ff(t).map(([k,l,ty,o,nd])=>{let e;
+if(ty==='sel')e='<select id="n_'+k+'">'+o.map(x=>'<option>'+x+'</option>').join('')+'</select>';
+else if(ty==='item')e='<input id="n_'+k+'" list="dl" placeholder="Type to search" autocomplete="off">';
+else e='<input id="n_'+k+'" type="'+(ty==='num'?'number" step="any" min="0" inputmode="decimal':ty)+'"'+(ty==='date'&&!o?' value="'+td()+'"':'')+'>';
+return'<div><label for="n_'+k+'">'+l+'</label>'+e+'</div>'}).join('')+'<button class="p" id="add">Add</button></div><datalist id="dl">'+ops+'</datalist><div id="msg" role="status">'+MSG+'</div>';
+}
+function list(t){
+const del=(id)=>'<button data-del="'+id+'" data-t="'+t+'" aria-label="Delete">Delete</button>';
+if(t==='items')return D.items.length?tbl(['Code','Item','Category','Unit','Cost','Price','Reorder','Supplier',''],D.items.map(i=>[['code','text'],['name','text'],['cat','text'],['unit','text'],['cost','number'],['price','number'],['min','number'],['sup','text']].map(([k,ty])=>'<input data-id="'+i.id+'" data-k="'+k+'" type="'+ty+'" value="'+esc(i[k])+'"'+(ty==='number'?' step="any" min="0"':'')+'>').concat(del(i.id)))):'<div class="nt">No items yet.</div>';
+if(t==='rec')return D.rec.length?tbl(['Date','Item','Batch','Expiry','Qty','Cost','Value','Supplier',''],D.rec.slice().sort((a,b)=>a.date<b.date?1:-1).slice(0,100).map(r=>[r.date,esc(item(r.item).name),esc(r.batch),expc(r.exp),num(r.qty),fmt(r.cost),fmt(r.qty*r.cost),esc(r.sup),del(r.id)])):'<div class="nt">Nothing received yet.</div>';
+if(t==='out')return D.out.length?tbl(['Date','Type','Item','Qty','Price','Value','Profit','To','Batches used (FEFO)',''],D.out.slice().sort((a,b)=>a.date<b.date?1:-1).slice(0,100).map(o=>[o.date,o.type,esc(item(o.item).name),num(o.qty),o.type==='Sale'?fmt(o.price):'\u2013',o.type==='Sale'?fmt(o.qty*o.price):'\u2013',o.type==='Sale'?fmt(o.qty*o.price-sum(o.al,a=>a.q*rec(a.b).cost)):'\u2013',esc(o.to),o.al.map(a=>esc(rec(a.b).batch)+' \u00d7'+num(a.q)).join(', '),del(o.id)])):'<div class="nt">Nothing issued or sold yet.</div>';
+return D.req.length?tbl(['Date','Unit','Item','Qty','Status',''],D.req.slice().sort((a,b)=>a.date<b.date?1:-1).map(r=>[r.date,esc(r.unit),esc(item(r.item).name),num(r.qty),r.st==='Pending'?badge('Pending','wn'):badge('Issued','ok'),(r.st==='Pending'?'<button class="p" data-iss="'+r.id+'">Issue</button> ':'')+del(r.id)])):'<div class="nt">No requisitions yet.</div>';
+}
+function repView(){
+const r=monthData(MO),T=k=>sum(r,x=>x[k]),pf=T('rev')-T('cogs');
+const rows=r.map(x=>[esc(x.i.name),num(x.oq),num(x.rq),num(x.sq),num(x.iq),num(x.wq),'<b>'+num(x.cq)+'</b>',fmt(x.cv),fmt(x.rev),'<span class="'+(x.rev-x.cogs<0?'bad':'')+'">'+fmt(x.rev-x.cogs)+'</span>',num(x.req)]);
+rows.push(['<b>Total</b>','','','','','','',fmt(T('cv')),fmt(T('rev')),fmt(pf),num(T('req'))]);
+return'<div class="card"><div class="row sp"><h2>Monthly report</h2><div class="row"><input type="month" id="mo" value="'+MO+'" aria-label="Month"><button id="csv">Export CSV</button><button onclick="window.print()">Print</button></div></div><div class="kp">'+(mn()?K('Opening stock value',fmt(T('ov')))+K('Received (cost)',fmt(T('rv')))+K('Sales',fmt(T('rev')))+K('Cost of goods sold',fmt(T('cogs')))+K('Profit',fmt(pf),pf>=0?'ok':'bad')+K('Issued to units (cost)',fmt(T('iv')))+K('Written off (cost)',fmt(T('wv')),T('wv')?'bad':'')+K('Closing stock value',fmt(T('cv'))):K('Opening qty',num(T('oq')))+K('Received',num(T('rq')))+K('Sold',num(T('sq')))+K('Issued to units',num(T('iq')))+K('Written off',num(T('wq')),T('wq')?'bad':'')+K('Closing qty',num(T('cq')))+K('Requisitioned',num(T('req'))))+'</div></div><div class="card">'+tbl(['Item','Opening qty','Received','Sold','Issued to units','Written off','Closing qty','Closing value','Sales','Profit','Requisitioned'],rows)+''+(mn()?'<div class="nt">Closing value is at cost. Profit = sales minus the cost of the batches sold. Issues to units are not sales, so they are shown at cost only.</div>':'<div class="nt">Quantities only. Turn on prices, value and profit in Settings to see money figures.</div>')+'</div>';
+}
+function setView(){
+const b=D.brand;
+return'<div class="card"><h2>Branding and currency</h2><div class="add"><div><label for="s_nm">App or hospital name</label><input id="s_nm" value="'+esc(b.name)+'"></div><div><label for="s_lg">Logo (small image)</label><input id="s_lg" type="file" accept="image/*"></div><div><label for="s_cur">Currency</label><select id="s_cur">'+['\u20a6','$','\u00a3','\u20ac','GH\u20b5','KSh'].map(c=>'<option'+(c===D.cur?' selected':'')+'>'+c+'</option>').join('')+'</select></div><div><label for="s_mn">Prices, value and profit</label><select id="s_mn"><option value="1"'+(mn()?' selected':'')+'>On</option><option value="0"'+(mn()?'':' selected')+'>Off</option></select></div><button id="s_rl">Remove logo</button></div></div><div class="card"><h2>Data and backup</h2><div class="nt" style="margin:0 0 8px">'+(CLOUD?'Shared storage is on: everyone with access sees the same data.':'Data is kept in this browser only. Use backup to move it between devices.')+'</div><div class="row"><button class="p" id="s_ex">Export backup</button><label class="sub">Import backup <input id="s_im" type="file" accept=".json,application/json"></label><button id="s_sm">Load sample data</button><button id="s_em">Start empty</button></div><div id="s_msg" class="nt" role="status"></div></div>';
+}
+function stockTable2(){
+const m=remMap(()=>true),rows=[],q=RQ.toLowerCase();let tc=0,tr=0,n=0;
+D.items.filter(i=>(i.name+' '+(i.code||'')).toLowerCase().includes(q)&&(!SC||i.cat===SC)).forEach(i=>{
+const bs=D.rec.filter(r=>r.item===i.id&&m[r.id]>0).sort(byExp),tq=sum(bs,r=>m[r.id]);
+const ex=bs.some(r=>r.exp&&days(r.exp)<0),nr=bs.some(r=>r.exp&&days(r.exp)>=0&&days(r.exp)<=90);
+if((SF==='low'&&!(tq<=i.min))||(SF==='out'&&tq>0)||(SF==='near'&&!nr)||(SF==='exp'&&!ex))return;
+const c=sum(bs,r=>m[r.id]*r.cost);tc+=c;tr+=tq*i.price;n++;
+rows.push([(i.code?'<small>'+esc(i.code)+'</small> ':'')+'<b>'+esc(i.name)+'</b><br><small>'+esc(i.unit)+'</small>','<b>'+num(tq)+'</b>',num(i.min),stl(tq,i.min),bs.length?expc(bs[0].exp):'–',fmt(c),fmt(tq*i.price)]);
+bs.forEach((r,k)=>rows.push(['<small>&nbsp;&nbsp;FEFO '+(k+1)+' · '+esc(r.batch)+'</small>','<small>'+num(m[r.id])+'</small>','','',expc(r.exp),'<small>'+fmt(m[r.id]*r.cost)+'</small>','<small>'+fmt(m[r.id]*i.price)+'</small>']))});
+if(!n)return'<div class="nt">No items match.</div>';
+rows.push(['<b>Total ('+n+' items)</b>','','','','',fmt(tc),fmt(tr)]);
+return tbl(['Item / batch','On hand','Reorder level','Status','Expiry','Value (cost)','Retail value'],rows);
+}
+function reorder(){
+const m=remMap(()=>true),L=D.items.map(i=>({i,q:sum(D.rec.filter(r=>r.item===i.id),r=>m[r.id]||0)})).filter(x=>x.i.min&&x.q<=x.i.min);
+return'<div class="card"><div class="row sp"><h2>Reorder list</h2><button onclick="window.print()">Print</button></div>'+(L.length?tbl(['Item','Supplier','On hand','Reorder level','Suggested order','Cost'],L.map(x=>{const s=Math.max(0,x.i.min*2-x.q);return[esc(x.i.name),esc(x.i.sup||''),num(x.q),num(x.i.min),'<b>'+num(s)+'</b>',fmt(s*x.i.cost)]})):'<div class="nt">Nothing to reorder.</div>')+'<div class="nt">Suggested order tops stock up to twice the reorder level.</div></div>';
+}
+function cardView(){
+const it=D.items.find(i=>i.id===SK),ops=D.items.map(i=>'<option value="'+esc(lab(i))+'">').join('');
+const h='<div class="card"><h2>Stock card</h2><div class="sub" style="margin:-6px 0 10px">Every movement of one item, with a running balance.</div><input id="sk" list="dl" value="'+(it?esc(lab(it)):'')+'" placeholder="Type an item to search" style="width:100%" autocomplete="off" aria-label="Item"><datalist id="dl">'+ops+'</datalist></div>';
+if(!it)return h+'<div class="card"><div class="nt">Choose an item to see its movements.</div></div>';
+const ev=[];
+D.rec.filter(r=>r.item===it.id).forEach(r=>ev.push({d:r.date,o:0,t:'Received',b:r.batch,i:r.qty,x:0,p:r.sup,v:r.qty*r.cost}));
+D.out.filter(o=>o.item===it.id).forEach(o=>o.al.forEach(a=>ev.push({d:o.date,o:1,t:o.type,b:rec(a.b).batch,i:0,x:a.q,p:o.to,v:a.q*rec(a.b).cost})));
+ev.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.o-b.o);
+let bal=0;const rows=ev.map(e=>{bal+=e.i-e.x;return[e.d,e.t,esc(e.b),e.i?num(e.i):'',e.x?num(e.x):'','<b>'+num(bal)+'</b>',esc(e.p||''),fmt(e.v)]});
+return h+'<div class="card"><div class="kp">'+K('On hand',num(bal))+K('Reorder level',num(it.min))+K('Total received',num(sum(ev,e=>e.i)))+K('Total out',num(sum(ev,e=>e.x)))+'</div>'+(rows.length?tbl(['Date','Type','Batch','In','Out','Balance','Party','Value'],rows):'<div class="nt">No movements yet.</div>')+'</div>';
+}
+function countView(){
+const m=remMap(()=>true);
+return'<div class="card"><h2>Stock count</h2><div class="sub" style="margin:-6px 0 10px">Count the shelves and type what you counted. Shortages are taken out (earliest expiry first). Surpluses are added as a count batch.</div><div id="msg" role="status">'+MSG+'</div>'+tbl(['Item','Unit','System qty','Counted'],D.items.map(i=>[esc(i.name),esc(i.unit),num(sum(D.rec.filter(r=>r.item===i.id),r=>m[r.id]||0)),'<input type="number" min="0" step="any" id="c_'+i.id+'">']))+'<div class="row" style="margin-top:10px"><button class="p" id="cnt">Apply counts</button></div></div>';
+}
+const NAV=[['dash','Dashboard'],['stock','Stock (FEFO)'],['card','Stock card'],['rec','Stock in'],['out','Stock out'],['req','Requisitions'],['count','Stock count'],['items','Items'],['rep','Monthly report'],['set','Settings']];
+function render(){
+document.body.classList.toggle('ro',RO);
+const b=D.brand;$('hbn').textContent=b.name;document.title=b.name+' \u2013 Hospital Stock';const hl=$('hlg');hl.style.display=b.logo?'block':'none';if(b.logo)hl.src=b.logo;
+$('nav').innerHTML=NAV.map(([k,l])=>'<button data-tab="'+k+'" class="'+(tab===k?'on':'')+'">'+l+'</button>').join('');
+let h='';
+if(tab==='dash')h=dash();
+else if(tab==='stock')h='<div class="card"><h2>Stock on hand, earliest expiry first</h2><div class="row" style="margin-bottom:10px"><input id="q" placeholder="Search name or code" value="'+esc(RQ)+'" style="flex:1 1 160px" aria-label="Search"><select id="sc" aria-label="Category"><option value="">All categories</option>'+[...new Set(D.items.map(i=>i.cat).filter(Boolean))].map(c=>'<option'+(c===SC?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select><select id="sf" aria-label="Filter">'+[['','All'],['low','Low stock'],['out','Out of stock'],['near','Expiring in 90 days'],['exp','Expired']].map(([v,l])=>'<option value="'+v+'"'+(v===SF?' selected':'')+'>'+l+'</option>').join('')+'</select></div><div id="stk">'+stockTable2()+'</div></div>';
+else if(tab==='card')h=cardView();else if(tab==='count')h=countView();
+else if(tab==='rep')h=repView();
+else if(tab==='set')h=setView();
+else h='<div class="card"><h2>'+TT[tab]+'</h2><div class="sub" style="margin:-6px 0 10px">'+HH[tab]+'</div>'+((tab!=='items'&&!D.items.length)?'<div class="nt bad">Add your items first in the Items tab.</div>':form(tab))+'</div><div class="card">'+list(tab)+'</div>';
+$('view').innerHTML=(RO?'<div class="card bad"><b>View-only access. You can see the data but not change it.</b></div>':'')+h;
+}
+function addRow(){
+const f=ff(tab),r={id:uid()};
+f.forEach(([k,,t])=>{const v=$('n_'+k).value;r[k]=t==='num'?(v===''?null:parseFloat(v)):t==='item'?pick(v):v});
+let err='';
+if(tab==='items'){if(!r.name.trim())err='Enter the item name.';else{r.name=r.name.trim();['cost','price','min'].forEach(k=>r[k]=r[k]||0);D.items.push(r);MSG='Item saved.'}}
+else if(tab==='rec'){if(!r.item)err='Choose an item.';else if(!(r.qty>0)||!r.batch.trim())err='Enter the batch number and quantity.';else{if(r.cost==null)r.cost=item(r.item).cost;D.rec.unshift(r);MSG='Stock received.'}}
+else if(tab==='out'){if(!r.item||!(r.qty>0))err='Choose an item and enter a quantity.';else{const p=r.type==='Sale'?(r.price==null?item(r.item).price:r.price):0,x=addOut(r.type,r.item,r.qty,p,r.to||'',r.date);if(x.err)err=x.err;else MSG=r.type+' recorded. Taken from: '+x.al.map(a=>rec(a.b).batch+' \u00d7'+num(a.q)).join(', ')+'.'}}
+else{if(!r.item||!(r.qty>0)||!r.unit.trim())err='Enter the unit, item and quantity.';else{r.st='Pending';D.req.unshift(r);MSG='Requisition added.'}}
+if(err){MSG='';render();$('msg').className='bad';$('msg').textContent=err;return}
+save();render();$('msg').className='ok';
+}
+document.addEventListener('click',async e=>{
+const b=e.target,i=b.id;
+if(b.dataset.tab){tab=b.dataset.tab;MSG='';render();window.scrollTo(0,0)}
+else if(i==='add')addRow();
+else if(b.dataset.del){const t=b.dataset.t,id=b.dataset.del;
+if(t==='rec'&&D.out.some(o=>o.al.some(a=>a.b===id))){alert('This batch has stock already issued or sold, so it cannot be deleted.');return}
+if(t==='items'&&(D.rec.some(r=>r.item===id)||D.out.some(o=>o.item===id)||D.req.some(r=>r.item===id))){alert('This item has stock records, so it cannot be deleted.');return}
+D[t]=D[t].filter(x=>x.id!==id);save();render()}
+else if(b.dataset.iss){const q=D.req.find(x=>x.id===b.dataset.iss),x=addOut('Issue',q.item,q.qty,0,q.unit,td());if(x.err){alert(x.err);return}q.st='Issued';MSG='';save();render()}
+else if(i==='cnt'){const m=remMap(()=>true);let n=0;const g=[];D.items.forEach(it=>{const v=$('c_'+it.id).value;if(v==='')return;const d=parseFloat(v)-sum(D.rec.filter(r=>r.item===it.id),r=>m[r.id]||0);if(!d)return;n++;if(d<0)addOut('Adjustment',it.id,-d,0,'Stock count',td());else D.rec.unshift({id:uid(),date:td(),item:it.id,batch:'COUNT-'+td(),exp:'',qty:d,cost:it.cost,sup:'Stock count'});g.push(it.name+' '+(d>0?'+':'')+num(d))});MSG=n?'Adjusted: '+g.join(', ')+'.':'No differences found.';save();render()}
+else if(i==='csv'){const r=monthData(MO),h=['Item','Opening qty','Received','Sold','Issued to units','Written off','Closing qty','Closing value','Sales','Profit','Requisitioned'];const m=await dl('stock-report-'+MO+'.csv',[h].concat(r.map(x=>[x.i.name,x.oq,x.rq,x.sq,x.iq,x.wq,x.cq,x.cv,x.rev,x.rev-x.cogs,x.req])).map(l=>mn()?l:l.filter((_,i)=>![7,8,9].includes(i))).map(l=>l.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n'));alert(m)}
+else if(i==='s_ex'){$('s_msg').textContent=await dl('hospital-stock-backup-'+td()+'.json',JSON.stringify(D,null,1))}
+else if(i==='s_rl'){D.brand.logo='';save();render()}
+else if(i==='s_sm'&&confirm('Replace your data with the sample data?')){const b0=D.brand,c=D.cur;seed();D.brand=b0;D.cur=c;save();render()}
+else if(i==='s_em'&&confirm('Remove all data and start empty?')){D={cur:D.cur,brand:D.brand,items:[],rec:[],out:[],req:[]};save();tab='items';render()}
+});
+document.addEventListener('change',e=>{
+const x=e.target;
+if(x.id==='mo'){MO=x.value||MO;render();return}
+if(x.id==='s_nm'){D.brand.name=x.value.trim()||'Banky app';save();render();return}
+if(x.id==='s_cur'){D.cur=x.value;save();render();return}
+if(x.id==='s_mn'){D.money=x.value==='1';save();render();return}
+if(x.id==='sf'||x.id==='sc'){if(x.id==='sf')SF=x.value;else SC=x.value;$('stk').innerHTML=stockTable2();return}
+if(x.id==='sk'){SK=pick(x.value);render();return}
+if(x.id==='s_lg'&&x.files[0]){logo(x.files[0]);return}
+if(x.id==='s_im'&&x.files[0]){importB(x.files[0]);return}
+if(x.dataset.k&&x.dataset.id){const r=D.items.find(i=>i.id===x.dataset.id);if(r){r[x.dataset.k]=x.type==='number'?(parseFloat(x.value)||0):x.value;save();render()}}
+});
+document.addEventListener('input',e=>{if(e.target.id==='q'){RQ=e.target.value;$('stk').innerHTML=stockTable2()}});
+async function dl(name,data){
+try{const c=window.claude&&claude.use?await claude.use('downloads'):null;if(c){await c.save({filename:name,data});return'Saved.'}}catch(e){return'Not saved.'}
+const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data]));a.download=name;document.body.appendChild(a);a.click();a.remove();return'Downloaded.';
+}
+function importB(f){
+const r=new FileReader();r.onload=()=>{try{const o=JSON.parse(r.result);if(!Array.isArray(o.items)||!Array.isArray(o.rec))throw 0;if(!confirm('Replace the current data with this backup?'))return;['out','req'].forEach(k=>o[k]=o[k]||[]);o.cur=o.cur||'\u20a6';o.brand=o.brand||D.brand;D=o;save();render()}catch(e){$('s_msg').textContent='That file is not a valid backup.'}};r.readAsText(f);
+}
+function logo(f){
+const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,160/im.height,240/im.width),c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);D.brand.logo=c.toDataURL('image/png');save();render()};im.src=r.result};r.readAsDataURL(f);
+}
+let DBH=null,RO=false,CLOUD=false,UID='',pt=0;
+function push(){if(!DBH||RO)return;clearTimeout(pt);pt=setTimeout(()=>{DBH.set({s:JSON.stringify(D),by:UID,t:Date.now()}).catch(()=>{})},700)}
+async function initCloud(){
+try{
+const c=window.claude;if(!c||!c.use)return;
+const db=await c.use('db');if(!db)return;
+const us=await c.use('user');
+if(us){try{UID=await us.id()}catch(e){}try{if((await us.can('data.write'))===false)RO=true}catch(e){}}
+DBH=db.doc('app/state');CLOUD=true;
+DBH.onSnapshot(s=>{
+if(s.metadata.hasPendingWrites)return;
+if(!s.exists){push();return}
+const d=s.data();if(!d||!d.s||d.s===JSON.stringify(D))return;
+const a=document.activeElement;if(a&&/INPUT|SELECT/.test(a.tagName)&&a.closest('#view'))return;
+try{D=JSON.parse(d.s);if(!D.brand)D.brand={name:'Banky app',logo:''};localStorage.setItem('hsd1',d.s)}catch(e){}
+render()},()=>{});
+render();
+}catch(e){}
+}
+render();
+initCloud();
+</script>
+</body>
+</html>
